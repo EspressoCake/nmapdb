@@ -1,3 +1,4 @@
+// Borrowed from lair-framework's work
 package nmap
 
 import (
