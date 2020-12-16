@@ -13,4 +13,4 @@ cp ~/go/bin/nmapdb .
 ```
 
 ## What does the data look like?
-![](images/database.png "db")
+![](images/db.png "db")
