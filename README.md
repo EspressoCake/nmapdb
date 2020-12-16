@@ -7,7 +7,9 @@ It creates a SQLite3 database, that can be viewed with any browser of choice.
 ## How do I use this?
 ```sh
 go get github.com/EspressoCake/nmapdb
-$(locate nmapdb) your_NMAP_XML_file.xml
+cp path_to_xmlfiles/*.xml .
+cp ~/go/bin/nmapdb .
+./nmapdb
 ```
 
 ## What does the data look like?
