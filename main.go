@@ -35,6 +35,7 @@ func prepareTable(db *sql.DB) {
 			"HostIP" TEXT,
 			"Protocol" TEXT,
 			"Port" INTEGER,
+			"State" TEXT,
 			"Service" TEXT,
 			"Additional_ID" TEXT);`
 
@@ -47,14 +48,14 @@ func prepareTable(db *sql.DB) {
 	log.Println("Table created...")
 }
 
-func insertHost(db *sql.DB, protocol string, host string, port int, service string, additional string, index int) {
-	insertHostRecord := `INSERT INTO scan_results(HostIP, Protocol, Port, Service, Additional_ID) VALUES (?, ?, ?, ?, ?)`
+func insertHost(db *sql.DB, protocol string, host string, status string, port int, service string, additional string, index int) {
+	insertHostRecord := `INSERT INTO scan_results(HostIP, Protocol, Port, State, Service, Additional_ID) VALUES (?, ?, ?, ?, ?, ?)`
 	statement, err := db.Prepare(insertHostRecord)
 	if err != nil {
 		println("We have an error here...")
 		log.Fatalln(err.Error())
 	}
-	_, err = statement.Exec(protocol, host, port, testString(service), testString(additional))
+	_, err = statement.Exec(protocol, host, port, status, testString(service), testString(additional))
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
@@ -107,7 +108,7 @@ func main() {
 							if generalIndex%1000 == 0 {
 								log.Printf("Index: %d records written\n", generalIndex)
 							}
-							insertHost(sqliteDatabase, ip.Addr, portInfo.Protocol, portInfo.PortId, portInfo.Service.Product, portInfo.Service.Version, index+1)
+							insertHost(sqliteDatabase, ip.Addr, portInfo.Protocol, portInfo.State.State, portInfo.PortId, portInfo.Service.Product, portInfo.Service.Version, index+1)
 							generalIndex++
 						}
 					}
