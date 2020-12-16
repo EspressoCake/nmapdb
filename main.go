@@ -98,7 +98,8 @@ func main() {
 			generalIndex := 1
 			xmlContent, err := nmap.Parse(content)
 			if err != nil {
-				log.Fatal(err)
+				//log.Fatal(err)
+				continue
 			} else {
 				for _, item := range xmlContent.Hosts {
 					for _, ip := range item.Addresses {
