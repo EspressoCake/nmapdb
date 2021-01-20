@@ -1,14 +1,18 @@
 package main
 
 import (
+	"bufio"
 	"database/sql"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
+	"sync"
 
 	"github.com/EspressoCake/nmapdb/nmap"
+	"github.com/fatih/color"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/schollz/sqlite3dump"
 	"gopkg.in/godo.v2/glob"
 )
 
@@ -18,15 +22,6 @@ func testString(data string) string {
 	}
 
 	return "N/A"
-}
-
-func generateDB() {
-	file, err := os.Create("sqlite-database.db")
-	if err != nil {
-		log.Fatal(err.Error())
-	}
-
-	file.Close()
 }
 
 func prepareTable(db *sql.DB) {
@@ -39,20 +34,19 @@ func prepareTable(db *sql.DB) {
 			"Service" TEXT,
 			"Additional_ID" TEXT);`
 
-	log.Println("Creating table...")
+	log.Println("Creating table(s).")
 	statement, err := db.Prepare(createScanTable)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 	statement.Exec()
-	log.Println("Table created...")
+	log.Println("Table(s) created.")
 }
 
 func insertHost(db *sql.DB, protocol string, host string, status string, port int, service string, additional string, index int) {
 	insertHostRecord := `INSERT INTO scan_results(HostIP, Protocol, Port, State, Service, Additional_ID) VALUES (?, ?, ?, ?, ?, ?)`
 	statement, err := db.Prepare(insertHostRecord)
 	if err != nil {
-		println("We have an error here...")
 		log.Fatalln(err.Error())
 	}
 	_, err = statement.Exec(protocol, host, port, status, testString(service), testString(additional))
@@ -71,51 +65,71 @@ func getXMLFiles() []*glob.FileAsset {
 	return files
 }
 
-func main() {
-	log.Println("Checking for a database...")
-
-	// Initial declaration due to scoping of if/else blocks
-	var sqliteDatabase *sql.DB
-	if _, err := os.Stat("./sqlite-database.db"); os.IsNotExist(err) {
-		sqliteDatabase, _ = sql.Open("sqlite3", "./sqlite-database.db")
-		defer sqliteDatabase.Close()
-
-		fmt.Println("We're going to have to make a new database...starting now.")
-		prepareTable(sqliteDatabase)
-	} else {
-		sqliteDatabase, _ = sql.Open("sqlite3", "./sqlite-database.db")
-		defer sqliteDatabase.Close()
+func dumpDatabase(databasePointer *sql.DB) {
+	file, err := os.Create("sample.dmp")
+	if err != nil {
+		log.Fatal(err)
 	}
+	defer file.Close()
+
+	buffObject := bufio.NewWriter(file)
+	err = sqlite3dump.DumpDB(databasePointer, buffObject)
+	buffObject.Flush()
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, err.Error()+"\n")
+	} else {
+		color.Cyan("sqlite3 newdb.db < sample.dmp")
+	}
+}
+
+func generateXMLSlice() []*nmap.NmapRun {
+	return make([]*nmap.NmapRun, len(getXMLFiles()))
+}
+
+func main() {
+	sqliteDatabase, _ := sql.Open("sqlite3", ":memory:")
+	defer sqliteDatabase.Close()
+	prepareTable(sqliteDatabase)
 
 	generalData := getXMLFiles()
+	xmlDataStream := generateXMLSlice()
 
-	if generalData != nil {
-		for _, value := range generalData {
-			fmt.Println("Processing file: ", value.Path)
-			content, err := ioutil.ReadFile(value.Path)
+	// General debugging information
+	fmt.Println("Number of files to ingest:", len(xmlDataStream))
+
+	var wg sync.WaitGroup
+	wg.Add(len(xmlDataStream))
+	for i := 0; i < len(xmlDataStream); i++ {
+		go func(i int) {
+			defer wg.Done()
+
+			content, err := ioutil.ReadFile(generalData[i].Path)
 			if err != nil {
-				log.Fatal(err)
-			}
-			generalIndex := 1
-			xmlContent, err := nmap.Parse(content)
-			if err != nil {
-				//log.Fatal(err)
-				continue
+
 			} else {
-				for _, item := range xmlContent.Hosts {
-					for _, ip := range item.Addresses {
-						for index, portInfo := range item.Ports {
-							if generalIndex%1000 == 0 {
-								log.Printf("Index: %d records written\n", generalIndex)
-							}
-							insertHost(sqliteDatabase, ip.Addr, portInfo.Protocol, portInfo.State.State, portInfo.PortId, portInfo.Service.Product, portInfo.Service.Version, index+1)
-							generalIndex++
-						}
+				xmlContent, err := nmap.Parse(content)
+				if err != nil {
+				} else {
+					xmlDataStream[i] = xmlContent
+				}
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	for index, value := range xmlDataStream {
+		if xmlDataStream[index] != nil {
+			for _, host := range value.Hosts {
+				for _, ip := range host.Addresses {
+					for currentIndex, ports := range host.Ports {
+						insertHost(sqliteDatabase, ip.Addr, ports.Protocol, ports.State.State, ports.PortId, ports.Service.Product, ports.Service.Version, currentIndex+1)
 					}
 				}
 			}
 		}
 	}
 
-	fmt.Println("Ok, all done.")
+	dumpDatabase(sqliteDatabase)
 }
+
